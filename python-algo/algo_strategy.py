@@ -19,6 +19,16 @@ Advanced strategy tips:
   the actual current map state.
 """
 
+Y_MAX = 13
+WALL_LENGTH = 20
+TURRET_ORIGIN = [23, Y_MAX - 1]
+TURRET_WALL_LOCATION = [TURRET_ORIGIN[0], TURRET_ORIGIN[1] + 1]
+SUPPORT_ORIGIN = [16, 12]
+SUPPORT_ROW_LENGTH = 5
+SUPPORT_COST = 4
+MP_THRESHOLD_SCOUT = 10
+SCOUT_SPAWN_LOCATION = [13, 0]
+
 class AlgoStrategy(gamelib.AlgoCore):
     def __init__(self):
         super().__init__()
@@ -43,6 +53,8 @@ class AlgoStrategy(gamelib.AlgoCore):
         SP = 0
         # This is a good place to do initial setup
         self.scored_on_locations = []
+        self.support_count = 0
+        self.support_row = 0
 
     def on_turn(self, turn_state):
         """
@@ -56,27 +68,23 @@ class AlgoStrategy(gamelib.AlgoCore):
         gamelib.debug_write('Performing turn {} of your custom algo strategy'.format(game_state.turn_number))
         game_state.suppress_warnings(True)  #Comment or remove this line to enable warnings.
 
-        Y_MAX = 13
         # BASE SPAWN
         # horizontal wall
-        WALL_LENGTH = 19
         for x in range(WALL_LENGTH):
             game_state.attempt_spawn(WALL, [x, Y_MAX])
 
         # turret diagonal
-        TURRET_ORIGIN = [23, Y_MAX - 1]
         num_turrets = 2
         for i in range(num_turrets):
             game_state.attempt_spawn(TURRET, [TURRET_ORIGIN[0] - i, TURRET_ORIGIN[1] - i])
 
         # protective wall for turret
-        TURRET_WALL_LOCATION = [TURRET_ORIGIN[0], TURRET_ORIGIN[1] + 1]
         game_state.attempt_spawn(WALL, TURRET_WALL_LOCATION)
         game_state.attempt_upgrade(TURRET_WALL_LOCATION)
 
         # protective wall on right edge
         for i in range(num_turrets + 3):
-            right_wall_location = [TURRET_ORIGIN[0] + 3 - i, TURRET_ORIGIN[1] + 1 - i]
+            right_wall_location = [TURRET_ORIGIN[0] + 4 - i, TURRET_ORIGIN[1] + 1 - i]
             game_state.attempt_spawn(WALL, right_wall_location)
             game_state.attempt_upgrade(right_wall_location)
 
@@ -88,22 +96,15 @@ class AlgoStrategy(gamelib.AlgoCore):
         wall_upgrade_count += 1
 
         # supports
-        SUPPORT_ORIGIN = [14, 12]
-        SUPPORT_ROW_LENGTH = 6
-        SUPPORT_COST = 6
-        support_count = 0
-        location = SUPPORT_ORIGIN
         if (game_state.get_resource(SP) > SUPPORT_COST):
-            game_state.attempt_spawn(SUPPORT, location)
-            game_state.attempt_upgrade(location)
-            count += 1
-            location = [location[0] + (support_count % SUPPORT_ROW_LENGTH), location[1] + (support_count // SUPPORT_ROW_LENGTH)]
+            support_location = [SUPPORT_ORIGIN[0] + (self.support_count % SUPPORT_ROW_LENGTH), SUPPORT_ORIGIN[1]]
+            game_state.attempt_spawn(SUPPORT, support_location)
+            game_state.attempt_upgrade(support_location)
+            self.support_count += 1
 
         # UNIT SPAWN
         # scout swarm
-        MP_THRESHOLD = 10
-        SCOUT_SPAWN_LOCATION = [13, 0]
-        if (game_state.get_resource(MP) > MP_THRESHOLD):
+        if (game_state.get_resource(MP) > MP_THRESHOLD_SCOUT):
             game_state.attempt_spawn(SCOUT, SCOUT_SPAWN_LOCATION, int(game_state.get_resource(MP)))
 
         game_state.submit_turn()
