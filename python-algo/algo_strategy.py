@@ -81,7 +81,6 @@ class AlgoStrategy(gamelib.AlgoCore):
         game_state.suppress_warnings(True)  #Comment or remove this line to enable warnings.
 
         # BASE SPAWN
-        # self.base_spawn(game_state)
         # horizontal wall
         for x in range(WALL_LENGTH):
             game_state.attempt_spawn(WALL, [x, Y_MAX])
@@ -118,10 +117,13 @@ class AlgoStrategy(gamelib.AlgoCore):
         # MOBILE UNIT SPAWN
         if game_state.turn_number == 0:
             # Two interceptors to patrol along wall
-            interceptor_locations = [[6,7], [21,7]]
-            interceptor_locations = self.filter_blocked_locations(interceptor_locations, game_state)
-            game_state.attempt_spawn(INTERCEPTOR, interceptor_locations, 1)
+            patrol_locations = [[6,7], [21,7]]
+            game_state.attempt_spawn(DEMOLISHER, patrol_locations[0], 1)
+            game_state.attempt_spawn(INTERCEPTOR, patrol_locations[1], 1)
         elif game_state.turn_number > 0:
+            # After updated state
+            if self.detect_enemy_unit(game_state, unit_type=None, valid_x=None, valid_y=[14, 15]) > 10:
+                self.demolisher_line_strategy(game_state)
             # Removes any locations that are blocked by structures
             self.SCOUT_SPAWN_LOCATION = self.filter_blocked_locations(self.SCOUT_SPAWN_LOCATION, game_state)
             # Determines which side has least damage from structures from potential self.SCOUT_SPAWN_LOCATIONs
@@ -137,26 +139,6 @@ class AlgoStrategy(gamelib.AlgoCore):
 
         game_state.submit_turn()
 
-    def base_spawn(self, game_state):
-        # horizontal wall
-        for x in range(WALL_LENGTH):
-            game_state.attempt_spawn(WALL, [x, Y_MAX])
-
-        # turret diagonal
-        num_turrets = 2
-        for i in range(num_turrets):
-            game_state.attempt_spawn(TURRET, [TURRET_ORIGIN[0] - i, TURRET_ORIGIN[1] - i])
-
-        # protective wall for turret
-        game_state.attempt_spawn(WALL, TURRET_WALL_LOCATION)
-        game_state.attempt_upgrade(TURRET_WALL_LOCATION)
-
-        # protective wall on right edge
-        for i in range(num_turrets + 3):
-            right_wall_location = [TURRET_ORIGIN[0] + 4 - i, TURRET_ORIGIN[1] + 1 - i]
-            game_state.attempt_spawn(WALL, right_wall_location)
-            if (i < num_turrets):
-                game_state.attempt_upgrade(right_wall_location)
 
     def least_damage_spawn_location(self, game_state, location_options):
         """
@@ -183,6 +165,13 @@ class AlgoStrategy(gamelib.AlgoCore):
             if not game_state.contains_stationary_unit(location):
                 filtered.append(location)
         return filtered
+    def demolisher_line_strategy(self, game_state):
+        """
+        Build a line of the cheapest stationary unit so our demolisher can attack from long range.
+        """
+        # Now spawn demolishers next to the line
+        # By asking attempt_spawn to spawn 1000 units, it will essentially spawn as many as we have resources for
+        game_state.attempt_spawn(DEMOLISHER, [24, 10], 1)
 
     def on_action_frame(self, turn_string):
         """
