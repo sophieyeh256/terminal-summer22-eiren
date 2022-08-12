@@ -19,13 +19,34 @@ Advanced strategy tips:
   the actual current map state.
 """
 
+LEFT = 'LEFT'
+RIGHT = 'RIGHT'
+
+X_MAX = 27
 Y_MAX = 13
-WALL_LENGTH = 20
-TURRET_ORIGIN = [23, Y_MAX - 1]
-TURRET_WALL_LOCATION = [TURRET_ORIGIN[0], TURRET_ORIGIN[1] + 1]
-SUPPORT_ORIGIN = [16, 12]
-SUPPORT_ROW_LENGTH = 5
-SUPPORT_COST = 4
+
+OUTPOST_WALL_X_DISTANCES = [0, 4, 8]
+OUTPOST_WALL_Y = Y_MAX
+
+HORIZONTAL_WALL_X_DISTANCE = 9
+HORIZONTAL_WALL_Y = OUTPOST_WALL_Y - 1
+HORIZONTAL_WALL_LENGTH = 5
+
+TURRET_ORIGIN_X_DISTANCE = 4
+TURRET_ORIGIN_Y = OUTPOST_WALL_Y - 1
+NUM_STARTING_TURRETS = 1
+TURRET_LIMIT = 4
+
+BLOCK_WALL_ORIGIN_X_DISTANCE = 1
+BLOCK_WALL_ORIGIN_Y = TURRET_ORIGIN_Y
+BLOCK_WALL_LENGTH = 7
+
+SUPPORT_ORIGIN_X_DISTANCE = 9
+SUPPORT_ORIGIN_Y = BLOCK_WALL_ORIGIN_Y - 1
+SUPPORT_ROW_LENGTH = 4
+SUPPORT_COST = 6
+SUPPORT_LIMIT = 24
+
 MP_THRESHOLD_SCOUT = 10
 SCOUT_SPAWN_LOCATION = [13, 0]
 
@@ -55,6 +76,9 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.scored_on_locations = []
         self.support_count = 0
         self.support_row = 0
+        self.curr_turret_count = NUM_STARTING_TURRETS
+        self.blocked_side = None
+        self.opened_side = None
 
     def on_turn(self, turn_state):
         """
@@ -69,39 +93,69 @@ class AlgoStrategy(gamelib.AlgoCore):
         game_state.suppress_warnings(True)  #Comment or remove this line to enable warnings.
 
         # BASE SPAWN
-        # horizontal wall
-        for x in range(WALL_LENGTH):
-            game_state.attempt_spawn(WALL, [x, Y_MAX])
+        ## main walls
+        def spawn(structure_type, x, y, side = LEFT):
+            if (side == LEFT):
+                game_state.attempt_spawn(structure_type, [x, y])
+            else:
+                game_state.attempt_spawn(structure_type, [X_MAX - x, y])
 
-        # turret diagonal
-        num_turrets = 2
-        for i in range(num_turrets):
-            game_state.attempt_spawn(TURRET, [TURRET_ORIGIN[0] - i, TURRET_ORIGIN[1] - i])
+        def upgrade(x, y, side = LEFT):
+            if (side == LEFT):
+                game_state.attempt_upgrade([x, y])
+            else:
+                game_state.attempt_upgrade([X_MAX - x, y])
 
-        # protective wall for turret
-        game_state.attempt_spawn(WALL, TURRET_WALL_LOCATION)
-        game_state.attempt_upgrade(TURRET_WALL_LOCATION)
+        def spawn_symmetrically(structure_type, x, y):
+            spawn(structure_type, x, y, LEFT)
+            spawn(structure_type, x, y, RIGHT)
 
-        # protective wall on right edge
-        for i in range(num_turrets + 3):
-            right_wall_location = [TURRET_ORIGIN[0] + 4 - i, TURRET_ORIGIN[1] + 1 - i]
-            game_state.attempt_spawn(WALL, right_wall_location)
-            if (i < num_turrets):
-                game_state.attempt_upgrade(right_wall_location)
+        def upgrade_symmetrically(x, y):
+            upgrade(x, y, LEFT)
+            upgrade(x, y, RIGHT)
 
-        # OPTIONAL SPAWNS
-        # wall upgrades
-        wall_upgrade_count = 3
-        for x in range(wall_upgrade_count):
-            game_state.attempt_upgrade([WALL_LENGTH - x, Y_MAX])
-        wall_upgrade_count += 1
+        for x_distance in OUTPOST_WALL_X_DISTANCES:
+            spawn_symmetrically(WALL, x_distance, OUTPOST_WALL_Y)
+            upgrade_symmetrically(x_distance, OUTPOST_WALL_Y)
 
-        # supports
-        if (game_state.get_resource(SP) > SUPPORT_COST):
-            support_location = [SUPPORT_ORIGIN[0] + (self.support_count % SUPPORT_ROW_LENGTH), SUPPORT_ORIGIN[1]]
-            game_state.attempt_spawn(SUPPORT, support_location)
-            game_state.attempt_upgrade(support_location)
-            self.support_count += 1
+        for horizontal_wall_count in range(HORIZONTAL_WALL_LENGTH):
+            spawn_symmetrically(WALL, HORIZONTAL_WALL_X_DISTANCE + horizontal_wall_count, HORIZONTAL_WALL_Y)
+
+        prev_sp_count = game_state.get_resource(SP)
+        for num_turret in range(NUM_STARTING_TURRETS):
+            spawn_symmetrically(TURRET, TURRET_ORIGIN_X_DISTANCE + num_turret, TURRET_ORIGIN_Y - num_turret)
+            spawn_symmetrically(WALL, num_turret + 1, TURRET_ORIGIN_Y - num_turret)
+            upgrade_symmetrically(num_turret + 1, TURRET_ORIGIN_Y - num_turret)
+
+        if (prev_sp_count - game_state.get_resource(SP) > 0):
+            self.curr_turret_count = min(TURRET_LIMIT, self.curr_turret_count + 1)
+
+        # Close one side
+        def choose_left_side_to_block():
+            return True
+
+        if (game_state.turn_number == 1):
+            if (choose_left_side_to_block()):
+                self.blocked_side = LEFT
+                self.opened_side = RIGHT
+            else:
+                self.blocked_side = RIGHT
+                self.opened_side = LEFT
+
+        if (game_state.turn_number >= 1):
+            for block_wall_count in range(BLOCK_WALL_LENGTH):
+                spawn(WALL, BLOCK_WALL_ORIGIN_X_DISTANCE + block_wall_count, BLOCK_WALL_ORIGIN_Y, self.blocked_side)
+
+            for num_turret in range(self.curr_turret_count):
+                spawn(TURRET, TURRET_ORIGIN_X_DISTANCE + num_turret, TURRET_ORIGIN_Y - num_turret, self.opened_side)
+                spawn(WALL, num_turret + 1, TURRET_ORIGIN_Y - num_turret, self.opened_side)
+                upgrade(num_turret + 1, TURRET_ORIGIN_Y - num_turret, self.opened_side)
+
+            num_supports = 0
+            while(game_state.get_resource(SP) > SUPPORT_COST and num_supports < SUPPORT_LIMIT):
+                spawn(SUPPORT, SUPPORT_ORIGIN_X_DISTANCE + (num_supports % SUPPORT_ROW_LENGTH), SUPPORT_ORIGIN_Y - (num_supports // SUPPORT_ROW_LENGTH), self.opened_side)
+                upgrade(SUPPORT_ORIGIN_X_DISTANCE + (num_supports % SUPPORT_ROW_LENGTH), SUPPORT_ORIGIN_Y - (num_supports // SUPPORT_ROW_LENGTH), self.opened_side)
+                num_supports += 1
 
         # UNIT SPAWN
         # scout swarm
@@ -130,7 +184,6 @@ class AlgoStrategy(gamelib.AlgoCore):
                 gamelib.debug_write("Got scored on at: {}".format(location))
                 self.scored_on_locations.append(location)
                 gamelib.debug_write("All locations: {}".format(self.scored_on_locations))
-
 
 if __name__ == "__main__":
     algo = AlgoStrategy()
