@@ -126,6 +126,7 @@ class AlgoStrategy(gamelib.AlgoCore):
             game_state.attempt_spawn(
                 SCOUT, SCOUT_SPAWN_LOCATION, int(game_state.get_resource(MP)))
 
+        self.prev_health = curr_health
         game_state.submit_turn()
 
     def on_action_frame(self, turn_string):
