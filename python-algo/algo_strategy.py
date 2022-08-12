@@ -19,15 +19,6 @@ Advanced strategy tips:
   the actual current map state.
 """
 
-Y_MAX = 13
-WALL_LENGTH = 20
-TURRET_ORIGIN = [23, Y_MAX - 1]
-TURRET_WALL_LOCATION = [TURRET_ORIGIN[0], TURRET_ORIGIN[1] + 1]
-SUPPORT_ORIGIN = [16, 12]
-SUPPORT_ROW_LENGTH = 5
-SUPPORT_COST = 4
-MP_THRESHOLD_SCOUT = 10
-SCOUT_SPAWN_LOCATION = [13, 0]
 
 class AlgoStrategy(gamelib.AlgoCore):
     def __init__(self):
@@ -42,19 +33,34 @@ class AlgoStrategy(gamelib.AlgoCore):
         """
         gamelib.debug_write('Configuring your custom algo strategy...')
         self.config = config
-        global WALL, SUPPORT, TURRET, SCOUT, DEMOLISHER, INTERCEPTOR, MP, SP
-        WALL = config["unitInformation"][0]["shorthand"]
-        SUPPORT = config["unitInformation"][1]["shorthand"]
-        TURRET = config["unitInformation"][2]["shorthand"]
-        SCOUT = config["unitInformation"][3]["shorthand"]
-        DEMOLISHER = config["unitInformation"][4]["shorthand"]
-        INTERCEPTOR = config["unitInformation"][5]["shorthand"]
-        MP = 1
-        SP = 0
         # This is a good place to do initial setup
         self.scored_on_locations = []
         self.support_count = 0
         self.support_row = 0
+
+        # Fixed Variables
+        global WALL, SUPPORT, TURRET, SCOUT, DEMOLISHER, INTERCEPTOR, MP, SP, Y_MAX, WALL_LENGTH, TURRET_ORIGIN, TURRET_WALL_LOCATION,SUPPORT_ORIGIN, SUPPORT_ROW_LENGTH, SUPPORT_COST
+        WALL = self.config["unitInformation"][0]["shorthand"]
+        SUPPORT = self.config["unitInformation"][1]["shorthand"]
+        TURRET = self.config["unitInformation"][2]["shorthand"]
+        SCOUT = self.config["unitInformation"][3]["shorthand"]
+        DEMOLISHER = self.config["unitInformation"][4]["shorthand"]
+        INTERCEPTOR = self.config["unitInformation"][5]["shorthand"]
+        MP = 1
+        SP = 0
+        Y_MAX = 13
+        WALL_LENGTH = 20
+        TURRET_ORIGIN = [23, Y_MAX - 1]
+        TURRET_WALL_LOCATION = [TURRET_ORIGIN[0], TURRET_ORIGIN[1] + 1]
+        SUPPORT_ORIGIN = [16, 12]
+        SUPPORT_ROW_LENGTH = 5
+        SUPPORT_COST = self.config["unitInformation"][1]["cost1"]
+        # MP_THRESHOLD_SCOUT = 10 # SY: currently not being used
+
+        # Modifiable variables
+        self.SCOUT_SPAWN_LOCATION = [[13, 0]]
+
+
 
     def on_turn(self, turn_state):
         """
@@ -63,12 +69,75 @@ class AlgoStrategy(gamelib.AlgoCore):
         for querying its state, allocating your current resources as planned
         unit deployments, and transmitting your intended deployments to the
         game engine.
+
+        Destroyer crawl if the entrance is blocked
+        (if you send the destroyer on the fourth row horizontally,
+        it will be at max range to destroy the enemy structures on their first row)
+        Check if entrance is heavily guarded and spawn a lot of destroyers
+
         """
         game_state = gamelib.GameState(self.config, turn_state)
         gamelib.debug_write('Performing turn {} of your custom algo strategy'.format(game_state.turn_number))
         game_state.suppress_warnings(True)  #Comment or remove this line to enable warnings.
 
         # BASE SPAWN
+        # self.base_spawn(game_state)
+        # horizontal wall
+        for x in range(WALL_LENGTH):
+            game_state.attempt_spawn(WALL, [x, Y_MAX])
+
+        # turret diagonal
+        num_turrets = 2
+        for i in range(num_turrets):
+            game_state.attempt_spawn(TURRET, [TURRET_ORIGIN[0] - i, TURRET_ORIGIN[1] - i])
+
+        # protective wall for turret
+        game_state.attempt_spawn(WALL, TURRET_WALL_LOCATION)
+        game_state.attempt_upgrade(TURRET_WALL_LOCATION)
+
+        # protective wall on right edge
+        for i in range(num_turrets + 3):
+            right_wall_location = [TURRET_ORIGIN[0] + 4 - i, TURRET_ORIGIN[1] + 1 - i]
+            game_state.attempt_spawn(WALL, right_wall_location)
+            if (i < num_turrets):
+                game_state.attempt_upgrade(right_wall_location)
+        # OPTIONAL SPAWNS
+        # wall upgrades
+        wall_upgrade_count = 3
+        for x in range(wall_upgrade_count):
+            game_state.attempt_upgrade([WALL_LENGTH - x, Y_MAX])
+        wall_upgrade_count += 1
+
+        # supports
+        if (game_state.get_resource(SP) > SUPPORT_COST):
+            support_location = [SUPPORT_ORIGIN[0] + (self.support_count % SUPPORT_ROW_LENGTH), SUPPORT_ORIGIN[1]]
+            game_state.attempt_spawn(SUPPORT, support_location)
+            game_state.attempt_upgrade(support_location)
+            self.support_count += 1
+
+        # MOBILE UNIT SPAWN
+        if game_state.turn_number == 0:
+            # Two interceptors to patrol along wall
+            interceptor_locations = [[6,7], [21,7]]
+            interceptor_locations = self.filter_blocked_locations(interceptor_locations, game_state)
+            game_state.attempt_spawn(INTERCEPTOR, interceptor_locations, 1)
+        elif game_state.turn_number > 0:
+            # Removes any locations that are blocked by structures
+            self.SCOUT_SPAWN_LOCATION = self.filter_blocked_locations(self.SCOUT_SPAWN_LOCATION, game_state)
+            # Determines which side has least damage from structures from potential self.SCOUT_SPAWN_LOCATIONs
+            self.SCOUT_SPAWN_LOCATION, damage = self.least_damage_spawn_location(game_state, self.SCOUT_SPAWN_LOCATION)
+            scout_health = game_state.get_resource(MP)*self.config["unitInformation"][3]["startHealth"]
+            # Deploy demolishers until scouts can sustain damage from enemy structures
+            if damage > scout_health:
+                num_demolishers = int(math.ceil((damage - scout_health) // self.config["unitInformation"][4]["startHealth"]))
+                game_state.attempt_spawn(DEMOLISHER, self.SCOUT_SPAWN_LOCATION, num_demolishers)
+            # Deploy scouts with remaining MP only if scouts can sustain damage
+            if damage < scout_health or num_demolishers*self.config["unitInformation"][4]["cost2"] < game_state.get_resource(MP):
+                game_state.attempt_spawn(SCOUT, self.SCOUT_SPAWN_LOCATION, int(game_state.get_resource(MP)))
+
+        game_state.submit_turn()
+
+    def base_spawn(self, game_state):
         # horizontal wall
         for x in range(WALL_LENGTH):
             game_state.attempt_spawn(WALL, [x, Y_MAX])
@@ -89,26 +158,31 @@ class AlgoStrategy(gamelib.AlgoCore):
             if (i < num_turrets):
                 game_state.attempt_upgrade(right_wall_location)
 
-        # OPTIONAL SPAWNS
-        # wall upgrades
-        wall_upgrade_count = 3
-        for x in range(wall_upgrade_count):
-            game_state.attempt_upgrade([WALL_LENGTH - x, Y_MAX])
-        wall_upgrade_count += 1
+    def least_damage_spawn_location(self, game_state, location_options):
+        """
+        This function will help us guess which location is the safest to spawn moving units from.
+        It gets the path the unit will take then checks locations on that path to
+        estimate the path's damage risk.
+        """
+        damages = []
+        # Get the damage estimate each path will take
+        for location in location_options:
+            path = game_state.find_path_to_edge(location)
+            damage = 0
+            for path_location in path:
+                # Get number of enemy turrets that can attack each location and multiply by turret damage
+                damage += len(game_state.get_attackers(path_location, 0)) * gamelib.GameUnit(TURRET, game_state.config).damage_i
+            damages.append(damage)
 
-        # supports
-        if (game_state.get_resource(SP) > SUPPORT_COST):
-            support_location = [SUPPORT_ORIGIN[0] + (self.support_count % SUPPORT_ROW_LENGTH), SUPPORT_ORIGIN[1]]
-            game_state.attempt_spawn(SUPPORT, support_location)
-            game_state.attempt_upgrade(support_location)
-            self.support_count += 1
+        # Now just return the location that takes the least damage and the damage
+        return [location_options[damages.index(min(damages))]], min(damages)
 
-        # UNIT SPAWN
-        # scout swarm
-        if (game_state.get_resource(MP) > MP_THRESHOLD_SCOUT):
-            game_state.attempt_spawn(SCOUT, SCOUT_SPAWN_LOCATION, int(game_state.get_resource(MP)))
-
-        game_state.submit_turn()
+    def filter_blocked_locations(self, locations, game_state):
+        filtered = []
+        for location in locations:
+            if not game_state.contains_stationary_unit(location):
+                filtered.append(location)
+        return filtered
 
     def on_action_frame(self, turn_string):
         """
