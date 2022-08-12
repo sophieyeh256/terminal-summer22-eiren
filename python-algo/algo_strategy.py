@@ -1,7 +1,5 @@
 import gamelib
 import random
-import math
-import warnings
 from sys import maxsize
 import json
 
@@ -29,6 +27,7 @@ SUPPORT_COST = 4
 MP_THRESHOLD_SCOUT = 10
 SCOUT_SPAWN_LOCATION = [13, 0]
 
+
 class AlgoStrategy(gamelib.AlgoCore):
     def __init__(self):
         super().__init__()
@@ -55,6 +54,8 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.scored_on_locations = []
         self.support_count = 0
         self.support_row = 0
+        self.prev_health = 30
+        self.max_health_drop = 0
 
     def on_turn(self, turn_state):
         """
@@ -65,8 +66,15 @@ class AlgoStrategy(gamelib.AlgoCore):
         game engine.
         """
         game_state = gamelib.GameState(self.config, turn_state)
-        gamelib.debug_write('Performing turn {} of your custom algo strategy'.format(game_state.turn_number))
-        game_state.suppress_warnings(True)  #Comment or remove this line to enable warnings.
+        gamelib.debug_write('Performing turn {} of your custom algo strategy'.format(
+            game_state.turn_number))
+        # Comment or remove this line to enable warnings.
+        game_state.suppress_warnings(True)
+
+        # how much did our health decrease?
+        curr_health = game_state.my_health
+        self.max_health_drop = max(
+            self.max_health_drop, self.prev_health - curr_health)
 
         # BASE SPAWN
         # horizontal wall
@@ -76,7 +84,8 @@ class AlgoStrategy(gamelib.AlgoCore):
         # turret diagonal
         num_turrets = 2
         for i in range(num_turrets):
-            game_state.attempt_spawn(TURRET, [TURRET_ORIGIN[0] - i, TURRET_ORIGIN[1] - i])
+            game_state.attempt_spawn(
+                TURRET, [TURRET_ORIGIN[0] - i, TURRET_ORIGIN[1] - i])
 
         # protective wall for turret
         game_state.attempt_spawn(WALL, TURRET_WALL_LOCATION)
@@ -84,7 +93,8 @@ class AlgoStrategy(gamelib.AlgoCore):
 
         # protective wall on right edge
         for i in range(num_turrets + 3):
-            right_wall_location = [TURRET_ORIGIN[0] + 4 - i, TURRET_ORIGIN[1] + 1 - i]
+            right_wall_location = [TURRET_ORIGIN[0] +
+                                   4 - i, TURRET_ORIGIN[1] + 1 - i]
             game_state.attempt_spawn(WALL, right_wall_location)
             if (i < num_turrets):
                 game_state.attempt_upgrade(right_wall_location)
@@ -96,17 +106,25 @@ class AlgoStrategy(gamelib.AlgoCore):
             game_state.attempt_upgrade([WALL_LENGTH - x, Y_MAX])
         wall_upgrade_count += 1
 
+        # last stand: change thresholds for spawning/upgrading resources based on current
+        # health
+        support_threshold, scout_threshold = SUPPORT_COST, MP_THRESHOLD_SCOUT
+        if curr_health <= self.max_health_drop:
+            support_threshold, scout_threshold = 0, 0
+
         # supports
-        if (game_state.get_resource(SP) > SUPPORT_COST):
-            support_location = [SUPPORT_ORIGIN[0] + (self.support_count % SUPPORT_ROW_LENGTH), SUPPORT_ORIGIN[1]]
+        if (game_state.get_resource(SP) > support_threshold):
+            support_location = [
+                SUPPORT_ORIGIN[0] + (self.support_count % SUPPORT_ROW_LENGTH), SUPPORT_ORIGIN[1]]
             game_state.attempt_spawn(SUPPORT, support_location)
             game_state.attempt_upgrade(support_location)
             self.support_count += 1
 
         # UNIT SPAWN
         # scout swarm
-        if (game_state.get_resource(MP) > MP_THRESHOLD_SCOUT):
-            game_state.attempt_spawn(SCOUT, SCOUT_SPAWN_LOCATION, int(game_state.get_resource(MP)))
+        if (game_state.get_resource(MP) > scout_threshold):
+            game_state.attempt_spawn(
+                SCOUT, SCOUT_SPAWN_LOCATION, int(game_state.get_resource(MP)))
 
         game_state.submit_turn()
 
@@ -129,7 +147,8 @@ class AlgoStrategy(gamelib.AlgoCore):
             if not unit_owner_self:
                 gamelib.debug_write("Got scored on at: {}".format(location))
                 self.scored_on_locations.append(location)
-                gamelib.debug_write("All locations: {}".format(self.scored_on_locations))
+                gamelib.debug_write(
+                    "All locations: {}".format(self.scored_on_locations))
 
 
 if __name__ == "__main__":
