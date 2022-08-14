@@ -111,6 +111,12 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.max_health_drop = max(
             self.max_health_drop, self.prev_health - curr_health)
 
+        # last stand: change thresholds for spawning/upgrading resources based on current
+        # health
+        support_threshold, self.curr_scout_threshold = self.SUPPORT_COST, self.MP_THRESHOLD_SCOUT
+        if curr_health <= self.max_health_drop:
+            support_threshold, self.curr_scout_threshold = 0, 0
+
         ## main walls
         for x_distance in self.OUTPOST_WALL_X_DISTANCES:
             self.spawn_symmetrically(game_state, self.WALL, x_distance, self.OUTPOST_WALL_Y)
@@ -140,7 +146,13 @@ class AlgoStrategy(gamelib.AlgoCore):
                 self.blocked_side = self.RIGHT
                 self.opened_side = self.LEFT
 
-        if (game_state.turn_number >= 1):
+        # MOBILE UNIT SPAWN
+        if game_state.turn_number == 0:
+            # Two interceptors to patrol along wall
+            patrol_locations = [[6,7], [21,7]]
+            game_state.attempt_spawn(self.DEMOLISHER, patrol_locations[0], 1)
+            game_state.attempt_spawn(self.INTERCEPTOR, patrol_locations[1], 1)
+        else:
             for block_wall_count in range(self.BLOCK_WALL_LENGTH):
                 self.spawn(game_state, self.WALL, self.BLOCK_WALL_ORIGIN_X_DISTANCE + block_wall_count, self.BLOCK_WALL_ORIGIN_Y, self.blocked_side)
 
@@ -155,27 +167,6 @@ class AlgoStrategy(gamelib.AlgoCore):
                 self.upgrade(game_state, self.SUPPORT_ORIGIN_X_DISTANCE + (num_supports % self.SUPPORT_ROW_LENGTH), self.SUPPORT_ORIGIN_Y - (num_supports // self.SUPPORT_ROW_LENGTH), self.opened_side)
                 num_supports += 1
 
-        # last stand: change thresholds for spawning/upgrading resources based on current
-        # health
-        support_threshold, self.curr_scout_threshold = self.SUPPORT_COST, self.MP_THRESHOLD_SCOUT
-        if curr_health <= self.max_health_drop:
-            support_threshold, self.curr_scout_threshold = 0, 0
-
-        # supports -- SHOULD THIS BE DELETED?
-        if (game_state.get_resource(self.SP) > support_threshold):
-            support_location = [
-                self.SUPPORT_ORIGIN[0] + (self.support_count % self.SUPPORT_ROW_LENGTH), self.SUPPORT_ORIGIN[1]]
-            game_state.attempt_spawn(self.WALL, support_location)
-            game_state.attempt_upgrade(support_location)
-            self.support_count += 1
-
-        # MOBILE UNIT SPAWN
-        if game_state.turn_number == 0:
-            # Two interceptors to patrol along wall
-            patrol_locations = [[6,7], [21,7]]
-            game_state.attempt_spawn(self.DEMOLISHER, patrol_locations[0], 1)
-            game_state.attempt_spawn(self.INTERCEPTOR, patrol_locations[1], 1)
-        elif game_state.turn_number > 0:
             # After updated state
             if self.detect_enemy_unit(game_state, unit_type=None, valid_x=None, valid_y=[14, 15]) > 10:
                 self.demolisher_line_strategy(game_state)
