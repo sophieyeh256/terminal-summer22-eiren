@@ -49,7 +49,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.SUPPORT_ORIGIN = [16, 12]
         self.SUPPORT_ROW_LENGTH = 5
         self.MP_THRESHOLD_SCOUT = 10
-        self.SUPPORT_COST = self.config["unitInformation"][1]["cost1"]
+        self.SUPPORT_COST = self.config["unitInformation"][1]["cost1"] + 2
         self.LEFT = 'LEFT'
         self.RIGHT = 'RIGHT'
         # wall distances
@@ -185,7 +185,7 @@ class AlgoStrategy(gamelib.AlgoCore):
                     if (self.previous_enemy_health - game_state.enemy_health < self.MP_INCREASE_THRESHOLD_SCOUT):
                         self.curr_scout_threshold += self.MP_INCREASE_SCOUT
                     self.is_ready_for_attack = True
-                    
+
                 if (self.is_ready_for_attack and game_state.get_resource(self.MP) > self.curr_scout_threshold):
                     game_state.attempt_spawn(self.SCOUT, self.SCOUT_SPAWN_LOCATION, int(game_state.get_resource(self.MP)))
                     self.is_ready_for_attack = False
