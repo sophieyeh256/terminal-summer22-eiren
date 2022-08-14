@@ -65,7 +65,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.BLOCK_WALL_ORIGIN_X_DISTANCE = 1
         self.BLOCK_WALL_ORIGIN_Y = self.TURRET_ORIGIN_Y
         self.BLOCK_WALL_LENGTH = 7
-        self.SUPPORT_ORIGIN_X_DISTANCE = 9
+        self.SUPPORT_ORIGIN_X_DISTANCE = 11
         self.SUPPORT_ORIGIN_Y = self.BLOCK_WALL_ORIGIN_Y - 1
         self.SUPPORT_ROW_LENGTH = 4
         self.SUPPORT_LIMIT = 24
@@ -160,6 +160,8 @@ class AlgoStrategy(gamelib.AlgoCore):
 
             num_supports = 0
             while(game_state.get_resource(self.SP) > self.SUPPORT_COST and num_supports < self.SUPPORT_LIMIT):
+                self.spawn(game_state, self.WALL, self.SUPPORT_ORIGIN_X_DISTANCE - 1, self.SUPPORT_ORIGIN_Y - (num_supports // self.SUPPORT_ROW_LENGTH), self.opened_side)
+                self.upgrade(game_state, self.SUPPORT_ORIGIN_X_DISTANCE - 1, self.SUPPORT_ORIGIN_Y - (num_supports // self.SUPPORT_ROW_LENGTH), self.opened_side)
                 self.spawn(game_state, self.SUPPORT, self.SUPPORT_ORIGIN_X_DISTANCE + (num_supports % self.SUPPORT_ROW_LENGTH), self.SUPPORT_ORIGIN_Y - (num_supports // self.SUPPORT_ROW_LENGTH), self.opened_side)
                 self.upgrade(game_state, self.SUPPORT_ORIGIN_X_DISTANCE + (num_supports % self.SUPPORT_ROW_LENGTH), self.SUPPORT_ORIGIN_Y - (num_supports // self.SUPPORT_ROW_LENGTH), self.opened_side)
                 num_supports += 1
