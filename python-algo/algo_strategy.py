@@ -60,7 +60,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.HORIZONTAL_WALL_LENGTH = 5
         self.TURRET_ORIGIN_X_DISTANCE = 4
         self.TURRET_ORIGIN_Y = self.OUTPOST_WALL_Y - 1
-        self.NUM_STARTING_TURRETS = 2
+        self.NUM_STARTING_TURRETS = 1
         self.TURRET_LIMIT = 4
         self.BLOCK_WALL_ORIGIN_X_DISTANCE = 1
         self.BLOCK_WALL_ORIGIN_Y = self.TURRET_ORIGIN_Y
@@ -70,7 +70,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.SUPPORT_ROW_LENGTH = 4
         self.SUPPORT_LIMIT = 24
         # Modifiable variables
-        self.SCOUT_SPAWN_LOCATION = [[13, 0]]
+        self.SCOUT_SPAWN_LOCATION = [13, 0]
         self.MP_INCREASE_THRESHOLD_SCOUT = 5
         self.MP_INCREASE_SCOUT = 3
         # This is a good place to do initial setup
@@ -79,7 +79,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.support_row = 0
         self.prev_health = 30
         self.max_health_drop = 0
-        self.curr_turret_count = self.NUM_STARTING_TURRETS
+        self.curr_turret_count = self.NUM_STARTING_TURRETS + 1
         self.blocked_side = None
         self.opened_side = None
         self.wall_locations = set()
@@ -136,7 +136,9 @@ class AlgoStrategy(gamelib.AlgoCore):
 
         # Close one side
         def choose_left_side_to_block():
-            return True
+            count_left = self.detect_enemy_unit(game_state, unit_type=None, valid_x=[i for i in range(14)], valid_y=None)
+            count_right = self.detect_enemy_unit(game_state, unit_type=None, valid_x=[i for i in range(14, 28)], valid_y=None)
+            return count_left >= count_right
 
         if (game_state.turn_number == 1):
             if (choose_left_side_to_block()):
@@ -147,12 +149,7 @@ class AlgoStrategy(gamelib.AlgoCore):
                 self.opened_side = self.LEFT
 
         # MOBILE UNIT SPAWN
-        if game_state.turn_number == 0:
-            # Two interceptors to patrol along wall
-            patrol_locations = [[6,7], [21,7]]
-            game_state.attempt_spawn(self.DEMOLISHER, patrol_locations[0], 1)
-            game_state.attempt_spawn(self.INTERCEPTOR, patrol_locations[1], 1)
-        else:
+        if game_state.turn_number > 0:
             for block_wall_count in range(self.BLOCK_WALL_LENGTH):
                 self.spawn(game_state, self.WALL, self.BLOCK_WALL_ORIGIN_X_DISTANCE + block_wall_count, self.BLOCK_WALL_ORIGIN_Y, self.blocked_side)
 
@@ -171,14 +168,21 @@ class AlgoStrategy(gamelib.AlgoCore):
             if self.detect_enemy_unit(game_state, unit_type=None, valid_x=None, valid_y=[14, 15]) > 10:
                 self.demolisher_line_strategy(game_state)
             # Removes any locations that are blocked by structures
-            self.SCOUT_SPAWN_LOCATION = self.filter_blocked_locations(self.SCOUT_SPAWN_LOCATION, game_state)
+            unit_spawn_location = self.SCOUT_SPAWN_LOCATION
+            if (self.blocked_side == self.LEFT):
+                unit_spawn_location = self.SCOUT_SPAWN_LOCATION
+            else:
+                unit_spawn_location = [self.X_MAX - self.SCOUT_SPAWN_LOCATION[0], self.SCOUT_SPAWN_LOCATION[1]]
+
+            location_options = [unit_spawn_location]
+            location_options = self.filter_blocked_locations(location_options, game_state)
             # Determines which side has least damage from structures from potential self.SCOUT_SPAWN_LOCATIONs
-            self.SCOUT_SPAWN_LOCATION, damage = self.least_damage_spawn_location(game_state, self.SCOUT_SPAWN_LOCATION)
+            best_unit_spawn_location, damage = self.least_damage_spawn_location(game_state, location_options)
             scout_health = game_state.get_resource(self.MP)*self.config["unitInformation"][3]["startHealth"]
             # Deploy demolishers until scouts can sustain damage from enemy structures
             if damage > scout_health:
                 num_demolishers = int(math.ceil((damage - scout_health) // self.config["unitInformation"][4]["startHealth"]))
-                game_state.attempt_spawn(self.DEMOLISHER, self.SCOUT_SPAWN_LOCATION, num_demolishers)
+                game_state.attempt_spawn(self.DEMOLISHER, best_unit_spawn_location, num_demolishers)
             # Deploy scouts with remaining self.MP only if scouts can sustain damage
             if damage < scout_health or num_demolishers*self.config["unitInformation"][4]["cost2"] < game_state.get_resource(self.MP):
                 if (not(self.is_ready_for_attack)):
@@ -187,7 +191,7 @@ class AlgoStrategy(gamelib.AlgoCore):
                     self.is_ready_for_attack = True
 
                 if (self.is_ready_for_attack and game_state.get_resource(self.MP) > self.curr_scout_threshold):
-                    game_state.attempt_spawn(self.SCOUT, self.SCOUT_SPAWN_LOCATION, int(game_state.get_resource(self.MP)))
+                    game_state.attempt_spawn(self.SCOUT, best_unit_spawn_location, int(game_state.get_resource(self.MP)))
                     self.is_ready_for_attack = False
 
         self.prev_health = curr_health
