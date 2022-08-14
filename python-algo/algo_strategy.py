@@ -206,7 +206,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         if (structure_type == self.WALL):
             wall_location = (location[0], location[1])
             if (prev_sp_count - game_state.get_resource(self.SP) > 0 and wall_location in self.wall_locations):
-                self.upgrade(game_state, location[0], location[1], side)
+                game_state.attempt_upgrade(location)
             else:
                 self.wall_locations.add(wall_location)
 
