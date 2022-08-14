@@ -60,7 +60,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.HORIZONTAL_WALL_LENGTH = 5
         self.TURRET_ORIGIN_X_DISTANCE = 4
         self.TURRET_ORIGIN_Y = self.OUTPOST_WALL_Y - 1
-        self.NUM_STARTING_TURRETS = 1
+        self.NUM_STARTING_TURRETS = 2
         self.TURRET_LIMIT = 4
         self.BLOCK_WALL_ORIGIN_X_DISTANCE = 1
         self.BLOCK_WALL_ORIGIN_Y = self.TURRET_ORIGIN_Y
