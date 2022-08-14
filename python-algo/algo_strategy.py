@@ -185,9 +185,7 @@ class AlgoStrategy(gamelib.AlgoCore):
                     if (self.previous_enemy_health - game_state.enemy_health < self.MP_INCREASE_THRESHOLD_SCOUT):
                         self.curr_scout_threshold += self.MP_INCREASE_SCOUT
                     self.is_ready_for_attack = True
-
-                gamelib.debug_write(f'Performing turn {self.curr_scout_threshold}')
-
+                    
                 if (self.is_ready_for_attack and game_state.get_resource(self.MP) > self.curr_scout_threshold):
                     game_state.attempt_spawn(self.SCOUT, self.SCOUT_SPAWN_LOCATION, int(game_state.get_resource(self.MP)))
                     self.is_ready_for_attack = False
