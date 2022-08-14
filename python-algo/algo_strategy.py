@@ -71,13 +71,21 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.SUPPORT_LIMIT = 24
         # Modifiable variables
         self.SCOUT_SPAWN_LOCATION = [[13, 0]]
+        self.MP_INCREASE_THRESHOLD_SCOUT = 5
+        self.MP_INCREASE_SCOUT = 3
         # This is a good place to do initial setup
         self.scored_on_locations = []
         self.support_count = 0
         self.support_row = 0
         self.prev_health = 30
         self.max_health_drop = 0
-        self.curr_turret_count = 0
+        self.curr_turret_count = self.NUM_STARTING_TURRETS
+        self.blocked_side = None
+        self.opened_side = None
+        self.wall_locations = set()
+        self.curr_scout_threshold = self.MP_THRESHOLD_SCOUT
+        self.is_ready_for_attack = True
+        self.previous_enemy_health = 30
 
     def on_turn(self, turn_state):
         """
@@ -91,7 +99,6 @@ class AlgoStrategy(gamelib.AlgoCore):
         (if you send the destroyer on the fourth row horizontally,
         it will be at max range to destroy the enemy structures on their first row)
         Check if entrance is heavily guarded and spawn a lot of destroyers
-
         """
         game_state = gamelib.GameState(self.config, turn_state)
         gamelib.debug_write('Performing turn {} of your custom algo strategy'.format(
@@ -150,9 +157,9 @@ class AlgoStrategy(gamelib.AlgoCore):
 
         # last stand: change thresholds for spawning/upgrading resources based on current
         # health
-        support_threshold, scout_threshold = self.SUPPORT_COST, self.MP_THRESHOLD_SCOUT
+        support_threshold, self.curr_scout_threshold = self.SUPPORT_COST, self.MP_THRESHOLD_SCOUT
         if curr_health <= self.max_health_drop:
-            support_threshold, scout_threshold = 0, 0
+            support_threshold, self.curr_scout_threshold = 0, 0
 
         # supports -- SHOULD THIS BE DELETED?
         if (game_state.get_resource(self.SP) > support_threshold):
@@ -183,22 +190,45 @@ class AlgoStrategy(gamelib.AlgoCore):
                 game_state.attempt_spawn(self.DEMOLISHER, self.SCOUT_SPAWN_LOCATION, num_demolishers)
             # Deploy scouts with remaining self.MP only if scouts can sustain damage
             if damage < scout_health or num_demolishers*self.config["unitInformation"][4]["cost2"] < game_state.get_resource(self.MP):
-                game_state.attempt_spawn(self.SCOUT, self.SCOUT_SPAWN_LOCATION, int(game_state.get_resource(self.MP)))
+                if (not(self.is_ready_for_attack)):
+                    if (self.previous_enemy_health - game_state.enemy_health < self.MP_INCREASE_THRESHOLD_SCOUT):
+                        self.curr_scout_threshold += self.MP_INCREASE_SCOUT
+                    self.is_ready_for_attack = True
+
+                gamelib.debug_write(f'Performing turn {self.curr_scout_threshold}')
+
+                if (self.is_ready_for_attack and game_state.get_resource(self.MP) > self.curr_scout_threshold):
+                    game_state.attempt_spawn(self.SCOUT, self.SCOUT_SPAWN_LOCATION, int(game_state.get_resource(self.MP)))
+                    self.is_ready_for_attack = False
 
         self.prev_health = curr_health
         game_state.submit_turn()
 
-    def spawn(self, game_state, structure_type, x, y, side):
+    def spawn(self, game_state, structure_type, x, y, side = 'LEFT'):
+        location = []
         if (side == self.LEFT):
-            game_state.attempt_spawn(structure_type, [x, y])
+            location = [x, y]
         else:
-            game_state.attempt_spawn(structure_type, [self.X_MAX - x, y])
+            location = [self.X_MAX - x, y]
 
-    def upgrade(self, game_state, x, y, side):
+        prev_sp_count = game_state.get_resource(self.SP)
+        game_state.attempt_spawn(structure_type, location)
+
+        if (structure_type == self.WALL):
+            wall_location = (location[0], location[1])
+            if (prev_sp_count - game_state.get_resource(self.SP) > 0 and wall_location in self.wall_locations):
+                self.upgrade(game_state, location[0], location[1], side)
+            else:
+                self.wall_locations.add(wall_location)
+
+    def upgrade(self, game_state, x, y, side = 'LEFT'):
+        location = []
         if (side == self.LEFT):
-            game_state.attempt_upgrade([x, y])
+            location = [x, y]
         else:
-            game_state.attempt_upgrade([self.X_MAX - x, y])
+            location = [self.X_MAX - x, y]
+
+        game_state.attempt_upgrade(location)
 
     def spawn_symmetrically(self, game_state, structure_type, x, y):
         self.spawn(game_state, structure_type, x, y, self.LEFT)
