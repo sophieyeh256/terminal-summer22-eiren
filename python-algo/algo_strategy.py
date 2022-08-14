@@ -19,8 +19,6 @@ Advanced strategy tips:
   the actual current map state.
 """
 
-
-
 class AlgoStrategy(gamelib.AlgoCore):
     def __init__(self):
         super().__init__()
@@ -34,13 +32,6 @@ class AlgoStrategy(gamelib.AlgoCore):
         """
         gamelib.debug_write('Configuring your custom algo strategy...')
         self.config = config
-        # This is a good place to do initial setup
-        self.scored_on_locations = []
-        self.support_count = 0
-        self.support_row = 0
-        self.prev_health = 30
-        self.max_health_drop = 0
-
         # Fixed Variables
         self.WALL = self.config["unitInformation"][0]["shorthand"]
         self.SUPPORT = self.config["unitInformation"][1]["shorthand"]
@@ -51,19 +42,42 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.MP = 1
         self.SP = 0
         self.Y_MAX = 13
+        self.X_MAX = 27
         self.WALL_LENGTH = 20
         self.TURRET_ORIGIN = [23, self.Y_MAX - 1]
         self.TURRET_WALL_LOCATION = [self.TURRET_ORIGIN[0], self.TURRET_ORIGIN[1] + 1]
         self.SUPPORT_ORIGIN = [16, 12]
         self.SUPPORT_ROW_LENGTH = 5
         self.MP_THRESHOLD_SCOUT = 10
-
         self.SUPPORT_COST = self.config["unitInformation"][1]["cost1"]
-
+        self.LEFT = 'LEFT'
+        self.RIGHT = 'RIGHT'
+        # wall distances
+        self.OUTPOST_WALL_X_DISTANCES = [0, 4, 8]
+        self.OUTPOST_WALL_Y = self.Y_MAX
+        self.HORIZONTAL_WALL_X_DISTANCE = 9
+        self.HORIZONTAL_WALL_Y = self.OUTPOST_WALL_Y - 1
+        self.HORIZONTAL_WALL_LENGTH = 5
+        self.TURRET_ORIGIN_X_DISTANCE = 4
+        self.TURRET_ORIGIN_Y = self.OUTPOST_WALL_Y - 1
+        self.NUM_STARTING_TURRETS = 1
+        self.TURRET_LIMIT = 4
+        self.BLOCK_WALL_ORIGIN_X_DISTANCE = 1
+        self.BLOCK_WALL_ORIGIN_Y = self.TURRET_ORIGIN_Y
+        self.BLOCK_WALL_LENGTH = 7
+        self.SUPPORT_ORIGIN_X_DISTANCE = 9
+        self.SUPPORT_ORIGIN_Y = self.BLOCK_WALL_ORIGIN_Y - 1
+        self.SUPPORT_ROW_LENGTH = 4
+        self.SUPPORT_LIMIT = 24
         # Modifiable variables
         self.SCOUT_SPAWN_LOCATION = [[13, 0]]
-
-
+        # This is a good place to do initial setup
+        self.scored_on_locations = []
+        self.support_count = 0
+        self.support_row = 0
+        self.prev_health = 30
+        self.max_health_drop = 0
+        self.curr_turret_count = 0
 
     def on_turn(self, turn_state):
         """
@@ -90,34 +104,49 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.max_health_drop = max(
             self.max_health_drop, self.prev_health - curr_health)
 
-        # BASE SPAWN
-        # horizontal wall
-        for x in range(self.WALL_LENGTH):
-            game_state.attempt_spawn(self.WALL, [x, self.Y_MAX])
+        ## main walls
+        for x_distance in self.OUTPOST_WALL_X_DISTANCES:
+            self.spawn_symmetrically(game_state, self.WALL, x_distance, self.OUTPOST_WALL_Y)
+            self.upgrade_symmetrically(game_state, x_distance, self.OUTPOST_WALL_Y)
 
-        # turret diagonal
-        num_turrets = 2
-        for i in range(num_turrets):
-            game_state.attempt_spawn(
-                self.TURRET, [self.TURRET_ORIGIN[0] - i, self.TURRET_ORIGIN[1] - i])
+        for horizontal_wall_count in range(self.HORIZONTAL_WALL_LENGTH):
+            self.spawn_symmetrically(game_state, self.WALL, self.HORIZONTAL_WALL_X_DISTANCE + horizontal_wall_count, self.HORIZONTAL_WALL_Y)
 
-        # protective wall for turret
-        game_state.attempt_spawn(self.WALL, self.TURRET_WALL_LOCATION)
-        game_state.attempt_upgrade(self.TURRET_WALL_LOCATION)
+        prev_sp_count = game_state.get_resource(self.SP)
+        for num_turret in range(self.NUM_STARTING_TURRETS):
+            self.spawn_symmetrically(game_state, self.TURRET, self.TURRET_ORIGIN_X_DISTANCE + num_turret, self.TURRET_ORIGIN_Y - num_turret)
+            self.spawn_symmetrically(game_state, self.WALL, num_turret + 1, self.TURRET_ORIGIN_Y - num_turret)
+            self.upgrade_symmetrically(game_state, num_turret + 1, self.TURRET_ORIGIN_Y - num_turret)
 
-        # protective wall on right edge
-        for i in range(num_turrets + 3):
-            right_wall_location = [self.TURRET_ORIGIN[0] +
-                                   4 - i, self.TURRET_ORIGIN[1] + 1 - i]
-            game_state.attempt_spawn(self.WALL, right_wall_location)
-            if (i < num_turrets):
-                game_state.attempt_upgrade(right_wall_location)
-        # OPTIONAL SPAWNS
-        # wall upgrades
-        wall_upgrade_count = 3
-        for x in range(wall_upgrade_count):
-            game_state.attempt_upgrade([self.WALL_LENGTH - x, self.Y_MAX])
-        wall_upgrade_count += 1
+        if (prev_sp_count - game_state.get_resource(self.SP) > 0):
+            self.curr_turret_count = min(self.TURRET_LIMIT, self.curr_turret_count + 1)
+
+        # Close one side
+        def choose_left_side_to_block():
+            return True
+
+        if (game_state.turn_number == 1):
+            if (choose_left_side_to_block()):
+                self.blocked_side = self.LEFT
+                self.opened_side = self.RIGHT
+            else:
+                self.blocked_side = self.RIGHT
+                self.opened_side = self.LEFT
+
+        if (game_state.turn_number >= 1):
+            for block_wall_count in range(self.BLOCK_WALL_LENGTH):
+                self.spawn(game_state, self.WALL, self.BLOCK_WALL_ORIGIN_X_DISTANCE + block_wall_count, self.BLOCK_WALL_ORIGIN_Y, self.blocked_side)
+
+            for num_turret in range(self.curr_turret_count):
+                self.spawn(game_state, self.TURRET, self.TURRET_ORIGIN_X_DISTANCE + num_turret, self.TURRET_ORIGIN_Y - num_turret, self.opened_side)
+                self.spawn(game_state, self.WALL, num_turret + 1, self.TURRET_ORIGIN_Y - num_turret, self.opened_side)
+                self.upgrade(game_state, num_turret + 1, self.TURRET_ORIGIN_Y - num_turret, self.opened_side)
+
+            num_supports = 0
+            while(game_state.get_resource(self.SP) > self.SUPPORT_COST and num_supports < self.SUPPORT_LIMIT):
+                self.spawn(game_state, self.SUPPORT, self.SUPPORT_ORIGIN_X_DISTANCE + (num_supports % self.SUPPORT_ROW_LENGTH), self.SUPPORT_ORIGIN_Y - (num_supports // self.SUPPORT_ROW_LENGTH), self.opened_side)
+                self.upgrade(game_state, self.SUPPORT_ORIGIN_X_DISTANCE + (num_supports % self.SUPPORT_ROW_LENGTH), self.SUPPORT_ORIGIN_Y - (num_supports // self.SUPPORT_ROW_LENGTH), self.opened_side)
+                num_supports += 1
 
         # last stand: change thresholds for spawning/upgrading resources based on current
         # health
@@ -125,14 +154,13 @@ class AlgoStrategy(gamelib.AlgoCore):
         if curr_health <= self.max_health_drop:
             support_threshold, scout_threshold = 0, 0
 
-        # supports
+        # supports -- SHOULD THIS BE DELETED?
         if (game_state.get_resource(self.SP) > support_threshold):
             support_location = [
                 self.SUPPORT_ORIGIN[0] + (self.support_count % self.SUPPORT_ROW_LENGTH), self.SUPPORT_ORIGIN[1]]
             game_state.attempt_spawn(self.WALL, support_location)
             game_state.attempt_upgrade(support_location)
             self.support_count += 1
-
 
         # MOBILE UNIT SPAWN
         if game_state.turn_number == 0:
@@ -160,6 +188,25 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.prev_health = curr_health
         game_state.submit_turn()
 
+    def spawn(self, game_state, structure_type, x, y, side):
+        if (side == self.LEFT):
+            game_state.attempt_spawn(structure_type, [x, y])
+        else:
+            game_state.attempt_spawn(structure_type, [self.X_MAX - x, y])
+
+    def upgrade(self, game_state, x, y, side):
+        if (side == self.LEFT):
+            game_state.attempt_upgrade([x, y])
+        else:
+            game_state.attempt_upgrade([self.X_MAX - x, y])
+
+    def spawn_symmetrically(self, game_state, structure_type, x, y):
+        self.spawn(game_state, structure_type, x, y, self.LEFT)
+        self.spawn(game_state, structure_type, x, y, self.RIGHT)
+
+    def upgrade_symmetrically(self, game_state, x, y):
+        self.upgrade(game_state, x, y, self.LEFT)
+        self.upgrade(game_state, x, y, self.RIGHT)
 
     def least_damage_spawn_location(self, game_state, location_options):
         """
@@ -223,7 +270,6 @@ class AlgoStrategy(gamelib.AlgoCore):
                 self.scored_on_locations.append(location)
                 gamelib.debug_write(
                     "All locations: {}".format(self.scored_on_locations))
-
 
 if __name__ == "__main__":
     algo = AlgoStrategy()
